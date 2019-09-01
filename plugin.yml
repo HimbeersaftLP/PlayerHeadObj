@@ -15,3 +15,10 @@ permissions:
         default: op
       playerheadObj.attack:
         default: op
+      playerheadObj.save:
+        default: op
+        children:
+          playerheadObj.save.fromserver:
+            default: op
+          playerheadObj.save.frommojang:
+            default: op

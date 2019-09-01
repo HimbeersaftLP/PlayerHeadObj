@@ -25,7 +25,9 @@ declare(strict_types=1);
 namespace Benda95280\PlayerHeadObj;
 
 use Benda95280\PlayerHeadObj\commands\PHCommand;
+use Benda95280\PlayerHeadObj\commands\PHSaveCommand;
 use Benda95280\PlayerHeadObj\entities\HeadEntityObj;
+use mysql_xdevapi\Exception;
 use pocketmine\entity\Entity;
 use pocketmine\entity\Skin;
 use pocketmine\event\block\BlockPlaceEvent;
@@ -38,6 +40,7 @@ use pocketmine\nbt\tag\CompoundTag;
 use pocketmine\nbt\tag\StringTag;
 use pocketmine\nbt\tag\ByteArrayTag;
 use pocketmine\plugin\PluginBase;
+use pocketmine\plugin\PluginException;
 use pocketmine\utils\TextFormat;
 
 
@@ -65,6 +68,7 @@ class PlayerHeadObj extends PluginBase implements Listener{
 		Entity::registerEntity(HeadEntityObj::class, true, ['PlayerHeadObj']);
 
 		$this->getServer()->getCommandMap()->register('PlayerHeadObj', new PHCommand($data["message"]));
+		$this->getServer()->getCommandMap()->register('PlayerHeadObj', new PHSaveCommand($this));
 		$this->getServer()->getPluginManager()->registerEvents($this, $this);
 		//Count skins available
 		$pathSkinsHead = PlayerHeadObj::getInstance()->getDataFolder()."skins\\";
@@ -138,12 +142,12 @@ class PlayerHeadObj extends PluginBase implements Listener{
 		return (ItemFactory::get(Item::MOB_HEAD, 3))
 			->setCustomBlockData(new CompoundTag('Skin', [
 				new StringTag('Name', $name),
-				new ByteArrayTag('Data', PlayerHeadObj::createSkin($name))
+				new ByteArrayTag('Data', PlayerHeadObj::skinPngToByteArr($name))
 			]))
 			->setCustomName(TextFormat::colorize('&r'.$nameFinal, '&'));
 	}
 
-    public static function createSkin($skinName){
+    public static function skinPngToByteArr($skinName){
 			$path = PlayerHeadObj::getInstance()->getDataFolder()."skins\\{$skinName}.png";
 			$img = @imagecreatefrompng($path);
 			$bytes = '';
@@ -161,5 +165,56 @@ class PlayerHeadObj extends PluginBase implements Listener{
 			@imagedestroy($img);
 			return $bytes;
     }
+
+	/**
+	 * @param $skinData
+	 * @param $skinName
+	 * @return string File name
+	 */
+	public static function skinByteArrToPng($skinData, $skinName): string {
+		while (true) {
+			$path = PlayerHeadObj::getInstance()->getDataFolder() . "skins\\{$skinName}.png";
+			if (file_exists($path)) {
+				$skinName = "{$skinName}_1";
+			} else {
+				break;
+			}
+		}
+		$len = strlen($skinData);
+		if ($len === 64 * 64 * 4) {
+			$width = 64;
+			$height = 64;
+		} else if ($len === 64 * 32 * 4) {
+			$width = 64;
+			$height = 32;
+		} else if ($len === 128 * 128 * 4) {
+			$width = 128;
+			$height = 128;
+		} else {
+			throw new PluginException("Invalid skin size!");
+		}
+		$image = imagecreatetruecolor($width, $height);
+		// Make background transparent
+		imagefill($image, 0, 0, imagecolorallocatealpha($image, 0, 0, 0, 127));
+		$skinPos = 0;
+		for ($y = 0; $y < $height; $y++) {
+			for ($x = 0; $x < $width; $x++) {
+				$r = ord($skinData[$skinPos]);
+				$skinPos++;
+				$g = ord($skinData[$skinPos]);
+				$skinPos++;
+				$b = ord($skinData[$skinPos]);
+				$skinPos++;
+				$a = 127 - intdiv(ord($skinData[$skinPos]), 2);
+				$skinPos++;
+				$col = imagecolorallocatealpha($image, $r, $g, $b, $a);
+				imagesetpixel($image, $x, $y, $col);
+			}
+		}
+		imagesavealpha($image, true);
+		imagepng($image, $path);
+		imagedestroy($image);
+		return "{$skinName}.png";
+	}
 	
 }
